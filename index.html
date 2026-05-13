@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Pac Quiz Fruit Hunt</title>
+
+<style>
+body{
+    margin:0;
+    background:#111;
+    color:white;
+    font-family:Arial;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+h1{ color:yellow; }
+
+#ui{
+    width:600px;
+    display:flex;
+    justify-content:space-between;
+    margin:10px;
+    font-size:22px;
+}
+
+canvas{
+    background:black;
+    border:4px solid #3498db;
+}
+
+#modal{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    display:none;
+    justify-content:center;
+    align-items:center;
+    background:rgba(0,0,0,0.8);
+}
+
+#card{
+    background:white;
+    color:black;
+    padding:25px;
+    border-radius:12px;
+    width:350px;
+    text-align:center;
+}
+
+button{
+    width:100%;
+    padding:12px;
+    margin-top:10px;
+    font-size:16px;
+    cursor:pointer;
+}
+
+#freeze{ color:#00ffff; }
+
+/* ✅ JOYSTICK */
+#joystickBase{
+    position:fixed;
+    bottom:30px;
+    left:30px;
+    width:120px;
+    height:120px;
+    background:rgba(255,255,255,0.1);
+    border:2px solid rgba(255,255,255,0.3);
+    border-radius:50%;
+    touch-action:none;
+}
+
+#joystickStick{
+    position:absolute;
+    top:50%;
+    left:50%;
+    width:50px;
+    height:50px;
+    background:rgba(255,255,255,0.6);
+    border-radius:50%;
+    transform:translate(-50%,-50%);
+}
+</style>
+</head>
+
+<body>
+
+<h1>PAC QUIZ 🍎</h1>
+
+<div id="ui">
+<div>Score: <span id="score">0</span>/5</div>
+<div id="freeze" style="display:none;">FROZEN 5s</div>
+<div id="lives">❤️❤️❤️❤️❤️</div>
+</div>
+
+<canvas id="game" width="600" height="360"></canvas>
+
+<div id="modal">
+<div id="card">
+<h2 id="question"></h2>
+<div id="answers"></div>
+</div>
+</div>
+
+<!-- ✅ JOYSTICK -->
+<div id="joystickBase">
+    <div id="joystickStick"></div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const scoreEl = document.getElementById("score");
+const livesEl = document.getElementById("lives");
+const modal = document.getElementById("modal");
+const questionEl = document.getElementById("question");
+const answersEl = document.getElementById("answers");
+const freezeEl = document.getElementById("freeze");
+
+const base = document.getElementById("joystickBase");
+const stick = document.getElementById("joystickStick");
+
+const tileSize = 40;
+
+let score = 0;
+let lives = 5;
+
+let isPaused = false;
+let isFrozen = false;
+let canTrigger = true;
+function drawMap(){
+    console.log("DRAW MAP RUNNING");
+    const tileSize = 30;
+    canvas.width = 600;
+    canvas.height = 360;
+
+    canvas.style.width = "95vw";
+    canvas.style.height = "auto";
+    if(!map) return;
+
+    for(let y=0;y<map.length;y++){
+        for(let x=0;x<map[y].length;x++){
+
+            if(map[y][x]===1){
+                ctx.fillStyle="#3498db";
+                ctx.fillRect(x*tileSize,y*tileSize,tileSize,tileSize);
+            }
+
+            if(map[y][x]===2){
+                ctx.fillStyle="yellow";
+                ctx.beginPath();
+                ctx.arc(x*tileSize+tileSize/2,y*tileSize+tileSize/2,6,0,Math.PI*2);
+                ctx.fill();
+            }
+        }
+    }
+}
+
+/* MAP */
+const baseMap = [
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,1,0,0,0,0,0,1,0,0,0,1],
+[1,0,1,0,1,0,1,1,1,0,1,0,1,0,1],
+[1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],
+[1,0,1,1,1,0,1,1,1,0,1,1,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,1,0,1,1,1,0,1,1,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+let map = JSON.parse(JSON.stringify(baseMap));
+
+const questions = [
+{q:"ข้อใดเป็นสมบัติของพลาสติก", a:"น้ำหนักเบา", options:["น้ำหนักเบา","บิดงอได้ยาก","ดูดซับน้ำได้ดี"]},
+{q:"ข้อใดเป็นวัสดุจากธรรมชาติ", a:"ไม้", options:["ยางสังเคราะห์","นาก(pink gold)","ไม้"]},
+{q:"วัสดุใดนำไฟฟ้าได้ดีที่สุด", a:"เงิน", options:["ทองแดง","เงิน","เหล็ก"]},
+{q:"ข้อใดควรใช้ทำด้ามจับหม้อร้อน", a:"พลาสติก", options:["พลาสติก","เหล็ก","อะลูมิเนียม"]},
+{q:"หากต้องการทำหน้าต่างที่ต้องการความโปร่งใสและแข็งแรงควรเลือกวัสดุใด", a:"กระจกใส", options:["กระจกใส","อะคริลิค","กระจกเงา"]}
+];
+
+/* COINS */
+function randomCoins(){
+    let spaces=[];
+    for(let y=0;y<map.length;y++){
+        for(let x=0;x<map[y].length;x++){
+            if(map[y][x]===0) spaces.push({x,y});
+        }
+    }
+    spaces.sort(()=>Math.random()-0.5);
+    for(let i=0;i<5;i++){
+        let p=spaces[i];
+        map[p.y][p.x]=2;
+    }
+}
+randomCoins();
+
+/* PLAYER */
+const player = {
+x:60,y:60,
+radius:14,
+speed:4,
+dir:"right",
+nextDir:"right",
+mouth:0.2,
+mouthDir:1
+};
+
+/* 2 GHOSTS */
+const ghosts = [
+{x:520,y:60,dx:-2,dy:0,speed:4.5,color:"red"},
+{x:60,y:300,dx:2,dy:0,speed:3,color:"cyan"}
+];
+
+/* KEYBOARD */
+window.addEventListener("keydown",(e)=>{
+    if(e.key==="ArrowUp") player.nextDir="up";
+    if(e.key==="ArrowDown") player.nextDir="down";
+    if(e.key==="ArrowLeft") player.nextDir="left";
+    if(e.key==="ArrowRight") player.nextDir="right";
+});
+
+/* JOYSTICK */
+let dragging=false;
+let startX=0,startY=0;
+
+base.addEventListener("touchstart",(e)=>{
+    dragging=true;
+    const t=e.touches[0];
+    startX=t.clientX;
+    startY=t.clientY;
+});
+
+base.addEventListener("touchmove",(e)=>{
+    if(!dragging) return;
+
+    const t=e.touches[0];
+    const dx=t.clientX-startX;
+    const dy=t.clientY-startY;
+
+    const max=40;
+    const dist=Math.hypot(dx,dy);
+    const angle=Math.atan2(dy,dx);
+
+    let mx=dx,my=dy;
+
+    if(dist>max){
+        mx=Math.cos(angle)*max;
+        my=Math.sin(angle)*max;
+    }
+
+    stick.style.transform=
+        `translate(${mx-25}px,${my-25}px)`;
+
+    if(Math.abs(mx)>Math.abs(my)){
+        player.nextDir = (mx>0)?"right":"left";
+    }else{
+        player.nextDir = (my>0)?"down":"up";
+    }
+});
+
+base.addEventListener("touchend",()=>{
+    dragging=false;
+    stick.style.transform="translate(-50%,-50%)";
+});
+
+/* UTILS */
+function updateUI(){
+    scoreEl.innerText=score;
+    livesEl.innerHTML="❤️".repeat(lives);
+}
+
+function isWall(x,y){
+    const c=Math.floor(x/tileSize);
+    const r=Math.floor(y/tileSize);
+    if(r<0||r>=map.length||c<0||c>=map[0].length) return true;
+    return map[r][c]===1;
+}
+
+function canMove(x,y,r){
+    return !(isWall(x-r,y-r)||isWall(x+r,y-r)||isWall(x-r,y+r)||isWall(x+r,y+r));
+}
+
+function resetPositions(){
+    player.x=60;player.y=60;
+    ghosts[0].x=380;ghosts[0].y=145;
+    ghosts[1].x=60;ghosts[1].y=300;
+}
+
+/* PLAYER */
+function movePlayer(){
+    if(isFrozen) return;
+
+    let dx=0,dy=0;
+
+    if(player.nextDir==="right") dx=player.speed;
+    if(player.nextDir==="left") dx=-player.speed;
+    if(player.nextDir==="up") dy=-player.speed;
+    if(player.nextDir==="down") dy=player.speed;
+
+    if(canMove(player.x+dx,player.y+dy,player.radius)){
+        player.dir=player.nextDir;
+    }
+
+    dx=0;dy=0;
+
+    if(player.dir==="right") dx=player.speed;
+    if(player.dir==="left") dx=-player.speed;
+    if(player.dir==="up") dy=-player.speed;
+    if(player.dir==="down") dy=player.speed;
+
+    if(canMove(player.x+dx,player.y+dy,player.radius)){
+        player.x+=dx;
+        player.y+=dy;
+    }
+
+    const gx=Math.floor(player.x/tileSize);
+    const gy=Math.floor(player.y/tileSize);
+
+    if(map[gy][gx]===2 && canTrigger){
+        canTrigger=false;
+        map[gy][gx]=0;
+
+        ghosts.forEach(g=>{
+            g.speed=Math.min(g.speed+0.5,6);
+        });
+
+        askQuestion();
+        setTimeout(()=>canTrigger=true,300);
+    }
+}
+
+/* GHOST */
+function heuristic(a, b){
+    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function getNode(x, y){
+    return `${x},${y}`;
+}
+
+function findPath(start, goal){
+    const open = [];
+    const closed = new Set();
+    const cameFrom = new Map();
+
+    const gScore = new Map();
+    const fScore = new Map();
+
+    open.push(start);
+
+    gScore.set(getNode(start.x, start.y), 0);
+    fScore.set(getNode(start.x, start.y), heuristic(start, goal));
+
+    const dirs = [
+        {x:1,y:0},{x:-1,y:0},
+        {x:0,y:1},{x:0,y:-1}
+    ];
+
+    while(open.length){
+        // get lowest fScore node
+        let currentIndex = 0;
+        for(let i=1;i<open.length;i++){
+            const a = getNode(open[i].x, open[i].y);
+            const b = getNode(open[currentIndex].x, open[currentIndex].y);
+
+            if((fScore.get(a) ?? Infinity) < (fScore.get(b) ?? Infinity)){
+                currentIndex = i;
+            }
+        }
+
+        const current = open.splice(currentIndex, 1)[0];
+        const currentKey = getNode(current.x, current.y);
+
+        if(current.x === goal.x && current.y === goal.y){
+            // reconstruct path
+            const path = [];
+            let temp = currentKey;
+
+            while(cameFrom.has(temp)){
+                path.push(temp);
+                temp = cameFrom.get(temp);
+            }
+
+            return path.reverse();
+        }
+
+        closed.add(currentKey);
+
+        for(const d of dirs){
+            const nx = current.x + d.x;
+            const ny = current.y + d.y;
+            const key = getNode(nx, ny);
+
+            if(closed.has(key)) continue;
+            if(isWall(nx * tileSize, ny * tileSize)) continue;
+
+            const tentativeG = (gScore.get(currentKey) ?? Infinity) + 1;
+
+            if(!open.find(n => n.x === nx && n.y === ny)){
+                open.push({x:nx, y:ny});
+            } else if(tentativeG >= (gScore.get(key) ?? Infinity)){
+                continue;
+            }
+
+            cameFrom.set(key, currentKey);
+            gScore.set(key, tentativeG);
+            fScore.set(key, tentativeG + heuristic({x:nx,y:ny}, goal));
+        }
+    }
+
+    return [];
+}
+// function moveGhost(g){
+
+//     const gx = Math.floor(g.x / tileSize);
+//     const gy = Math.floor(g.y / tileSize);
+
+//     const px = Math.floor(player.x / tileSize);
+//     const py = Math.floor(player.y / tileSize);
+
+//     const dist = Math.hypot(player.x - g.x, player.y - g.y);
+//     const chase = dist < 200;
+
+//     // target: player or random wander
+//     let target;
+
+//     if(chase){
+//         target = {x: px, y: py};
+//     } else {
+//         // random target tile
+//         target = {
+//             x: Math.floor(Math.random() * map[0].length),
+//             y: Math.floor(Math.random() * map.length)
+//         };
+//     }
+
+//     const path = findPath({x:gx,y:gy}, target);
+
+//     if(path.length > 0){
+//         const next = path[0].split(",").map(Number);
+//         const nx = next[0];
+//         const ny = next[1];
+
+//         const dx = nx - gx;
+//         const dy = ny - gy;
+
+//         g.x += dx * g.speed;
+//         g.y += dy * g.speed;
+//     } else {
+//         // fallback random movement
+//         const dirs = [
+//             {x:g.speed,y:0},
+//             {x:-g.speed,y:0},
+//             {x:0,y:g.speed},
+//             {x:0,y:-g.speed}
+//         ];
+
+//         const r = dirs[Math.floor(Math.random()*dirs.length)];
+//         if(canMove(g.x + r.x, g.y + r.y, 12)){
+//             g.x += r.x;
+//             g.y += r.y;
+//         }
+//     }
+// }
+function moveGhost(g){
+    const gx = Math.floor(g.x / tileSize);
+    const gy = Math.floor(g.y / tileSize);
+
+    const px = Math.floor(player.x / tileSize);
+    const py = Math.floor(player.y / tileSize);
+
+    
+    if(g.dx===undefined) g.dx=g.speed;
+    if(g.dy===undefined) g.dy=0;
+
+    const dirs=[
+        {x:g.speed,y:0},
+        {x:-g.speed,y:0},
+        {x:0,y:g.speed},
+        {x:0,y:-g.speed}
+    ];
+
+    const dist=Math.hypot(player.x-g.x,player.y-g.y);
+    const chase=dist<180;
+
+    const cx=Math.abs((g.x%tileSize)-tileSize/2)<3;
+    const cy=Math.abs((g.y%tileSize)-tileSize/2)<3;
+
+    
+
+    if(cx&&cy){
+        let possible=[];
+        dirs.forEach(d=>{
+            if(canMove(g.x+d.x,g.y+d.y,12)) possible.push(d);
+        });
+
+        if(possible.length){
+            if(chase){
+                let best=possible[0];
+                let bestD=Infinity;
+
+                possible.forEach(d=>{
+                    const dd=Math.hypot(
+                        player.x-(g.x+d.x*10),
+                        player.y-(g.y+d.y*10)
+                    );
+                    if(dd<bestD){bestD=dd;best=d;}
+                });
+
+                g.dx=best.x;
+                g.dy=best.y;
+
+            }else{
+                const r=possible[Math.floor(Math.random()*possible.length)];
+                g.dx=r.x;
+                g.dy=r.y;
+            }
+        }
+    }
+
+    if(!canMove(g.x+g.dx,g.y+g.dy,12)){
+        g.dx*=-1;
+        g.dy*=-1;
+    }
+
+    g.x+=g.dx;
+    g.y+=g.dy;
+}
+
+/* QUIZ */
+function askQuestion(){
+    isPaused=true;
+
+    const q=questions[Math.min(score,questions.length-1)];
+
+    questionEl.innerText=q.q;
+    answersEl.innerHTML="";
+
+    q.options.forEach(opt=>{
+        const btn=document.createElement("button");
+        btn.innerText=opt;
+
+        btn.onclick=()=>{
+            if(opt===q.a){
+                score++;
+                updateUI();
+                modal.style.display="none";
+                isPaused=false;
+
+                if(score===5) alert("YOU WIN!");
+            }else{
+                freezePlayer();
+            }
+        };
+
+        answersEl.appendChild(btn);
+    });
+
+    modal.style.display="flex";
+}
+
+/* FREEZE */
+function freezePlayer(){
+    isFrozen=true;
+    isPaused=false;
+    modal.style.display="none";
+
+    freezeEl.style.display="block";
+
+    let s=5;
+    freezeEl.innerText="FROZEN "+s+"s";
+
+    const t=setInterval(()=>{
+        s--;
+        freezeEl.innerText="FROZEN "+s+"s";
+        if(s<=0){
+            clearInterval(t);
+            isFrozen=false;
+            freezeEl.style.display="none";
+        }
+    },1000);
+}
+
+/* DRAW */
+function drawMap(){
+    for(let y=0;y<map.length;y++){
+        for(let x=0;x<map[y].length;x++){
+
+            if(map[y][x]===1){
+                ctx.fillStyle="#3498db";
+                ctx.fillRect(x*tileSize,y*tileSize,tileSize,tileSize);
+            }
+
+            if(map[y][x]===2){
+                ctx.fillStyle="yellow";
+                ctx.beginPath();
+                ctx.arc(x*tileSize+20,y*tileSize+20,8,0,Math.PI*2);
+                ctx.fill();
+            }
+        }
+    }
+}
+
+function drawPlayer(){
+    ctx.save();
+    ctx.translate(player.x,player.y);
+
+    let angle=0;
+    if(player.dir==="left") angle=Math.PI;
+    if(player.dir==="up") angle=-Math.PI/2;
+    if(player.dir==="down") angle=Math.PI/2;
+
+    ctx.rotate(angle);
+
+    ctx.fillStyle=isFrozen?"cyan":"yellow";
+
+    ctx.beginPath();
+    ctx.arc(0,0,player.radius,
+        player.mouth*Math.PI,
+        (2-player.mouth)*Math.PI
+    );
+    ctx.lineTo(0,0);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawGhost(g){
+    ctx.fillStyle=g.color;
+    ctx.beginPath();
+    ctx.arc(g.x,g.y,12,Math.PI,0);
+    ctx.lineTo(g.x+12,g.y+12);
+    ctx.lineTo(g.x-12,g.y+12);
+    ctx.fill();
+}
+
+/* COLLISION */
+function checkGhostCollision(){
+    ghosts.forEach(g=>{
+        const d=Math.hypot(player.x-g.x,player.y-g.y);
+
+        if(d<20){
+            lives--;
+            updateUI();
+            resetPositions();
+
+            if(lives<=0){
+                alert("GAME OVER");
+                location.reload();
+            }
+        }
+    });
+}
+
+/* LOOP */
+function gameLoop(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    drawMap();
+
+    if(!isPaused){
+        movePlayer();
+        ghosts.forEach(moveGhost);
+        checkGhostCollision();
+    }
+
+    drawPlayer();
+    ghosts.forEach(drawGhost);
+
+    requestAnimationFrame(gameLoop);
+}
+
+updateUI();
+gameLoop();
+</script>
+
+</body>
+</html>
